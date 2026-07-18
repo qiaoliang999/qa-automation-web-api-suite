@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}TaskTrack{% endblock %}</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">✓</span>
+      <strong>TaskTrack</strong>
+      <span class="tag">QA Demo App</span>
+    </div>
+    {% if user is defined and user %}
+    <div class="user-info">
+      <span data-testid="user-greeting">Hello, {{ user.display_name }}</span>
+      <form method="post" action="/logout" class="inline">
+        <button type="submit" data-testid="logout-button" class="btn btn-ghost">Logout</button>
+      </form>
+    </div>
+    {% endif %}
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">
+    <p>TaskTrack — system under test for QA automation portfolio</p>
+  </footer>
+</body>
+</html>

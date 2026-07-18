@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}My Tasks · TaskTrack{% endblock %}
+{% block content %}
+<section class="page-header">
+  <h1 data-testid="tasks-heading">My Tasks</h1>
+  <p class="muted">Create, update status, and delete your personal tasks.</p>
+</section>
+
+{% if error %}
+<div class="alert alert-error" data-testid="form-error" role="alert">{{ error }}</div>
+{% endif %}
+{% if success %}
+<div class="alert alert-success" data-testid="form-success" role="status">{{ success }}</div>
+{% endif %}
+
+<section class="card">
+  <h2>Create task</h2>
+  <form method="post" action="/tasks" data-testid="create-task-form" class="stack">
+    <div>
+      <label for="title">Title</label>
+      <input id="title" name="title" type="text" data-testid="task-title-input"
+             placeholder="e.g. Review pull request" />
+    </div>
+    <div>
+      <label for="description">Description</label>
+      <textarea id="description" name="description" rows="3"
+                data-testid="task-description-input"
+                placeholder="Optional details"></textarea>
+    </div>
+    <div>
+      <label for="status_value">Status</label>
+      <select id="status_value" name="status_value" data-testid="task-status-select">
+        <option value="todo">Todo</option>
+        <option value="in_progress">In progress</option>
+        <option value="done">Done</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary" data-testid="create-task-submit">Create task</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Task list <span class="badge" data-testid="task-count">{{ tasks|length }}</span></h2>
+  {% if not tasks %}
+  <p class="muted" data-testid="empty-tasks">No tasks yet. Create one above.</p>
+  {% else %}
+  <ul class="task-list" data-testid="task-list">
+    {% for task in tasks %}
+    <li class="task-item" data-testid="task-item" data-task-id="{{ task.id }}">
+      <div class="task-main">
+        <strong data-testid="task-title">{{ task.title }}</strong>
+        <span class="status status-{{ task.status }}" data-testid="task-status">{{ task.status }}</span>
+        {% if task.description %}
+        <p class="muted" data-testid="task-description">{{ task.description }}</p>
+        {% endif %}
+      </div>
+      <div class="task-actions">
+        <form method="post" action="/tasks/{{ task.id }}/status" class="inline">
+          <select name="status_value" data-testid="status-change-select">
+            <option value="todo" {% if task.status == 'todo' %}selected{% endif %}>Todo</option>
+            <option value="in_progress" {% if task.status == 'in_progress' %}selected{% endif %}>In progress</option>
+            <option value="done" {% if task.status == 'done' %}selected{% endif %}>Done</option>
+          </select>
+          <button type="submit" class="btn btn-secondary" data-testid="status-change-submit">Update</button>
+        </form>
+        <form method="post" action="/tasks/{{ task.id }}/delete" class="inline">
+          <button type="submit" class="btn btn-danger" data-testid="delete-task-button">Delete</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}
