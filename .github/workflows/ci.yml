@@ -8,11 +8,75 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: API + UI tests
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ruff
+        run: ruff check app tests
+
+  api-contract:
+    name: API + Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_ENV: test
+      TASKTRACK_PBKDF2_ITERATIONS: "5000"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run API + contract tests
+        run: |
+          mkdir -p artifacts
+          pytest -m "api or contract" \
+            --junitxml=artifacts/junit-api.xml \
+            --html=artifacts/report-api.html \
+            --self-contained-html \
+            -q
+
+      - name: Upload API artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-contract-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+
+  ui:
+    name: UI
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
+    needs: [api-contract]
+    env:
+      APP_ENV: test
+      TASKTRACK_PBKDF2_ITERATIONS: "5000"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,21 +95,62 @@ jobs:
       - name: Install Playwright browsers
         run: python -m playwright install --with-deps chromium
 
-      - name: Run smoke tests
-        run: pytest -m smoke --maxfail=1
-
-      - name: Run full suite
+      - name: Run UI tests
         run: |
-          pytest \
-            --html=artifacts/report.html \
+          mkdir -p artifacts/screenshots artifacts/traces
+          pytest -m ui \
+            --junitxml=artifacts/junit-ui.xml \
+            --html=artifacts/report-ui.html \
             --self-contained-html \
             -q
 
-      - name: Upload test artifacts
+      - name: Upload UI artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-artifacts
-          path: |
-            artifacts/
+          name: ui-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+
+  smoke:
+    name: Smoke (PR gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: test
+      TASKTRACK_PBKDF2_ITERATIONS: "5000"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run smoke slice
+        run: |
+          mkdir -p artifacts
+          pytest -m smoke \
+            --junitxml=artifacts/junit-smoke.xml \
+            --html=artifacts/report-smoke.html \
+            --self-contained-html \
+            --maxfail=1 \
+            -q
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: artifacts/
           if-no-files-found: ignore

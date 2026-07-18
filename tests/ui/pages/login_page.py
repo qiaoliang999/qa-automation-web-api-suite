@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Locator, expect
 
-from tests.helpers.config import BASE_URL
+from tests.support.base_page import BasePage
 
 
-class LoginPage:
-    def __init__(self, page: Page, base_url: str = BASE_URL) -> None:
-        self.page = page
-        self.base_url = base_url.rstrip("/")
+class LoginPage(BasePage):
+    path = "/login"
 
     def open(self) -> None:
-        self.page.goto(f"{self.base_url}/login")
+        self.goto()
         expect(self.form).to_be_visible()
 
     @property

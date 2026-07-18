@@ -1,52 +1,41 @@
-# DEF-002 — Token format is predictable and not cryptographically signed
+# DEF-002 — Residual risk: session tokens are opaque, not signed JWTs
 
 | Field | Value |
 | --- | --- |
 | **ID** | DEF-002 |
-| **Title** | Auth tokens are opaque demo strings, not signed JWTs (acceptable only for demo app) |
-| **Severity** | Major *(in a production context)* / Informational *(for this demo)* |
-| **Priority** | P3 for portfolio demo; would be P0 in production |
-| **Status** | Accepted risk — intentional for the system under test |
-| **Environment** | TaskTrack 1.0.0 (in-memory demo) |
-| **Build / Commit** | initial portfolio release |
+| **Title** | Auth uses opaque server-side session tokens (acceptable residual risk for this SUT) |
+| **Severity** | Informational for this demo; would be design review item for production |
+| **Priority** | P3 (portfolio SUT) |
+| **Status** | **Accepted residual risk** — partially mitigated vs v1 |
+| **Environment** | TaskTrack 2.0.0 |
 | **Component** | API / Auth |
-| **Found by** | Security-minded exploratory review of `app/main.py` and `app/database.py` |
 | **Date found** | 2026-07-18 |
-| **Assignee** | N/A (documented design limitation) |
 
 ### Summary
-Authentication tokens are generated as `tok-{user_id}-{timestamp}` and stored in an in-memory map. They are not signed, not expiring by policy, and passwords are stored in plain text. This is intentional for a self-contained demo that prioritizes deterministic test data, but it must not be treated as production-safe.
 
-### Steps to Reproduce
-1. `POST /api/auth/login` with `{"username":"alice","password":"alice123"}`.
-2. Inspect `access_token` in the response body.
-3. Observe format: `tok-user-alice-<timestamp>`.
-4. Reuse the token on `GET /api/auth/me` successfully.
+TaskTrack v1 used predictable tokens (`tok-{user_id}-{timestamp}`) and **plaintext passwords**. Those were real defects for anything beyond a toy.
 
-### Expected Result (production)
-- Passwords hashed (e.g. bcrypt/argon2).
-- Tokens signed (JWT) or random opaque IDs with server-side session store.
-- Expiration, rotation, and HTTPS-only cookies.
+### Mitigations shipped in v2
 
-### Actual Result (demo)
-- Plain-text password comparison.
-- Predictable token prefix including user id.
-- In-memory only; reset via `/api/test/reset` for test isolation.
+| Risk | v1 | v2 |
+| --- | --- | --- |
+| Password storage | Plaintext compare | PBKDF2-SHA256 hashes (`app/auth.py`) |
+| Token predictability | User-id + timestamp prefix | `secrets.token_urlsafe(32)` opaque tokens |
+| Test reset exposure | Always registered | **404 unless `APP_ENV=test`** |
+| Persistence | In-memory only | SQLite |
 
-### Evidence
-- Token creation: `app/database.py` → `create_token`
-- Seeded credentials: `alice/alice123`, `bob/bob1234` (documented in README)
+### Residual limitations (honest)
 
-### Impact
-- **Demo/portfolio:** none — simplifies automation and reproducibility.
-- **If mistakenly reused in production:** high security risk (credential theft, session forgery).
+- Tokens are **not** JWTs; no built-in expiry claim or signing.
+- No refresh-token rotation, CSRF double-submit, or HTTPS-only cookie flags beyond `httponly` + `samesite=lax`.
+- PBKDF2 iteration count is tunable via `TASKTRACK_PBKDF2_ITERATIONS` (suite lowers it for speed).
 
-### Suggested Fix / Notes
-If evolving beyond a SUT demo:
-1. Hash passwords at rest.
-2. Issue signed JWTs or secure random session tokens.
-3. Remove `/api/test/reset` from non-test deployments.
-4. Enforce HTTPS and secure cookie flags for the UI session.
+### Regression locks
 
-### Verification
-Documented as known limitation in README. Automated suite continues to validate functional auth behavior (login success/failure, unauthorized access) without treating crypto hardening as in-scope for this demo.
+- `tests/api/test_auth.py::test_passwords_are_hashed_not_plaintext`
+- `tests/api/test_auth.py::test_tokens_are_opaque`
+- `tests/api/test_reset_gate.py` (reset gated)
+
+### Why not “fixed” to JWT
+
+The project’s primary product is the **automation suite**, not a production IdP. Opaque server-side tokens are adequate for a multi-role SUT while keeping the auth path simple to exercise in API and UI tests.

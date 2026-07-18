@@ -40,6 +40,9 @@ reports/latest/
 test-results/
 playwright-report/
 blob-report/
+tasktrack.db
+*.db
+!tests/**/*.db
 
 # Local secrets (none expected, but keep out)
 .env

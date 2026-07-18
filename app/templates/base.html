@@ -16,6 +16,7 @@
     {% if user is defined and user %}
     <div class="user-info">
       <span data-testid="user-greeting">Hello, {{ user.display_name }}</span>
+      <span class="tag" data-testid="user-role">{{ user.role }}</span>
       <form method="post" action="/logout" class="inline">
         <button type="submit" data-testid="logout-button" class="btn btn-ghost">Logout</button>
       </form>

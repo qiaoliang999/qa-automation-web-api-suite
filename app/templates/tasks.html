@@ -2,8 +2,13 @@
 {% block title %}My Tasks · TaskTrack{% endblock %}
 {% block content %}
 <section class="page-header">
-  <h1 data-testid="tasks-heading">My Tasks</h1>
-  <p class="muted">Create, update status, and delete your personal tasks.</p>
+  <h1 data-testid="tasks-heading">{% if user.role == 'admin' %}All Tasks{% else %}My Tasks{% endif %}</h1>
+  <p class="muted">
+    Manage tasks with status, priority, and optional due date.
+    {% if user.role == 'admin' %}
+    <span class="role-badge" data-testid="role-badge">admin</span>
+    {% endif %}
+  </p>
 </section>
 
 {% if error %}
@@ -19,21 +24,35 @@
     <div>
       <label for="title">Title</label>
       <input id="title" name="title" type="text" data-testid="task-title-input"
-             placeholder="e.g. Review pull request" />
+             placeholder="e.g. Review pull request" maxlength="120" />
     </div>
     <div>
       <label for="description">Description</label>
       <textarea id="description" name="description" rows="3"
                 data-testid="task-description-input"
-                placeholder="Optional details"></textarea>
+                placeholder="Optional details" maxlength="1000"></textarea>
     </div>
-    <div>
-      <label for="status_value">Status</label>
-      <select id="status_value" name="status_value" data-testid="task-status-select">
-        <option value="todo">Todo</option>
-        <option value="in_progress">In progress</option>
-        <option value="done">Done</option>
-      </select>
+    <div class="form-row">
+      <div>
+        <label for="status_value">Status</label>
+        <select id="status_value" name="status_value" data-testid="task-status-select">
+          <option value="todo">Todo</option>
+          <option value="in_progress">In progress</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+      <div>
+        <label for="priority_value">Priority</label>
+        <select id="priority_value" name="priority_value" data-testid="task-priority-select">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+      <div>
+        <label for="due_date">Due date</label>
+        <input id="due_date" name="due_date" type="date" data-testid="task-due-date-input" />
+      </div>
     </div>
     <button type="submit" class="btn btn-primary" data-testid="create-task-submit">Create task</button>
   </form>
@@ -50,6 +69,13 @@
       <div class="task-main">
         <strong data-testid="task-title">{{ task.title }}</strong>
         <span class="status status-{{ task.status }}" data-testid="task-status">{{ task.status }}</span>
+        <span class="priority priority-{{ task.priority }}" data-testid="task-priority">{{ task.priority }}</span>
+        {% if task.due_date %}
+        <span class="muted" data-testid="task-due-date">Due {{ task.due_date }}</span>
+        {% endif %}
+        {% if user.role == 'admin' %}
+        <span class="muted" data-testid="task-owner">owner: {{ task.owner_id }}</span>
+        {% endif %}
         {% if task.description %}
         <p class="muted" data-testid="task-description">{{ task.description }}</p>
         {% endif %}

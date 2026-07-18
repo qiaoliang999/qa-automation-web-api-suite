@@ -7,7 +7,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.helpers.config import USERS
+from tests.support.config import USERS
 from tests.ui.pages.login_page import LoginPage
 from tests.ui.pages.tasks_page import TasksPage
 
@@ -38,18 +38,15 @@ def test_login_failure_shows_error(page: Page):
 
 
 @pytest.mark.ui
-def test_logout_returns_to_login(page: Page):
-    login = LoginPage(page)
-    login.open()
-    login.login("bob", USERS["bob"]["password"])
-
-    tasks = TasksPage(page)
+def test_logout_returns_to_login(authenticated_page: Page):
+    tasks = TasksPage(authenticated_page)
+    tasks.open()
     tasks.expect_loaded()
     tasks.logout_button.click()
 
-    login_after = LoginPage(page)
+    login_after = LoginPage(authenticated_page)
     expect(login_after.form).to_be_visible()
-    expect(page).to_have_url(re.compile(r".*/login"))
+    expect(authenticated_page).to_have_url(re.compile(r".*/login"))
 
 
 @pytest.mark.ui
@@ -58,3 +55,16 @@ def test_tasks_page_requires_login(page: Page, base_url: str):
     expect(page).to_have_url(re.compile(r".*/login"))
     login = LoginPage(page)
     expect(login.form).to_be_visible()
+
+
+@pytest.mark.ui
+def test_admin_login_shows_role(page: Page):
+    login = LoginPage(page)
+    login.open()
+    admin = USERS["admin"]
+    login.login(admin["username"], admin["password"])
+    tasks = TasksPage(page)
+    tasks.expect_loaded()
+    expect(tasks.greeting).to_contain_text(admin["display_name"])
+    expect(page.get_by_test_id("user-role")).to_have_text("admin")
+    expect(page.get_by_test_id("tasks-heading")).to_have_text("All Tasks")

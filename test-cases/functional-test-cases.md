@@ -1,7 +1,6 @@
 # TaskTrack — Manual Functional Test Cases
 
-These sample test cases document expected behavior for the TaskTrack demo application.
-Automated coverage maps to many of these cases under `tests/api` and `tests/ui`.
+Sample cases for the TaskTrack demo application (v2). Many map to automated coverage under `tests/api`, `tests/contract`, and `tests/ui`.
 
 ---
 
@@ -10,21 +9,19 @@ Automated coverage maps to many of these cases under `tests/api` and `tests/ui`.
 | Field | Value |
 | --- | --- |
 | **ID** | TC-AUTH-001 |
-| **Title** | User can log in with valid seeded credentials |
 | **Type** | Functional / Smoke |
 | **Priority** | P0 |
-| **Preconditions** | Application is running; seed data loaded |
-| **Test data** | username=`alice`, password=`alice123` |
+| **Test data** | `alice / alice123` |
 
 **Steps**
 1. Navigate to `/login`.
-2. Enter username `alice` and password `alice123`.
-3. Click **Login**.
+2. Enter username and password.
+3. Submit.
 
 **Expected**
-- User is redirected to `/tasks`.
-- Greeting shows `Hello, Alice Anderson`.
-- Seeded tasks for alice are listed.
+- Redirect to `/tasks`.
+- Greeting shows display name.
+- Role badge shows `user`.
 
 **Automation**
 - UI: `tests/ui/test_login.py::test_login_success`
@@ -37,25 +34,16 @@ Automated coverage maps to many of these cases under `tests/api` and `tests/ui`.
 | Field | Value |
 | --- | --- |
 | **ID** | TC-AUTH-002 |
-| **Title** | Login fails with incorrect password |
-| **Type** | Functional / Negative |
+| **Type** | Negative |
 | **Priority** | P0 |
-| **Preconditions** | Application is running |
-| **Test data** | username=`alice`, password=`wrong` |
-
-**Steps**
-1. Open `/login`.
-2. Enter valid username and incorrect password.
-3. Submit the form.
 
 **Expected**
-- User remains on the login page.
-- Error message: `Invalid username or password`.
-- No authenticated cookie / token is issued.
+- Stay on login; error `Invalid username or password`.
+- No session cookie issued.
 
 **Automation**
-- UI: `tests/ui/test_login.py::test_login_failure_shows_error`
-- API: `tests/api/test_auth.py::test_login_invalid_password`
+- UI: `test_login_failure_shows_error`
+- API: `test_login_rejects_bad_credentials` (parametrized)
 
 ---
 
@@ -64,187 +52,118 @@ Automated coverage maps to many of these cases under `tests/api` and `tests/ui`.
 | Field | Value |
 | --- | --- |
 | **ID** | TC-AUTH-003 |
-| **Title** | API allows registration of a unique username |
 | **Type** | Functional |
 | **Priority** | P1 |
-| **Preconditions** | Username does not already exist |
-
-**Steps**
-1. `POST /api/auth/register` with unique username, password (≥4), display_name.
-2. Observe response.
-3. Call `GET /api/auth/me` with returned token.
 
 **Expected**
-- HTTP 201 with `access_token`.
-- `/me` returns the new user's identity.
+- `POST /api/auth/register` → 201 + token + `role=user`.
+- Duplicate username → 409.
+- Short username / password → 422.
 
 **Automation**
-- API: `tests/api/test_auth.py::test_register_new_user`
+- `test_register_new_user`, `test_register_duplicate_username`, `test_register_validation_errors`
 
 ---
 
-## TC-AUTH-004 — Unauthorized access is blocked
+## TC-AUTH-004 — Admin login
 
 | Field | Value |
 | --- | --- |
 | **ID** | TC-AUTH-004 |
-| **Title** | Protected endpoints require authentication |
-| **Type** | Security / Functional |
-| **Priority** | P0 |
-
-**Steps**
-1. Call `GET /api/tasks` without Authorization header.
-2. Open `/tasks` in a browser without login cookie.
+| **Test data** | `admin / admin123` |
 
 **Expected**
-- API returns HTTP 401.
-- UI redirects to `/login`.
+- Token response `role=admin`.
+- UI heading **All Tasks** and role indicator.
 
 **Automation**
-- API: `tests/api/test_tasks.py::test_list_tasks_unauthorized`
-- UI: `tests/ui/test_login.py::test_tasks_page_requires_login`
+- API parametrized login; UI `test_admin_login_shows_role`
 
 ---
 
-## TC-TASK-001 — Create task (happy path)
+## TC-TASK-001 — List tasks is ownership-scoped
 
 | Field | Value |
 | --- | --- |
 | **ID** | TC-TASK-001 |
-| **Title** | Authenticated user can create a task |
-| **Type** | Functional / Smoke |
 | **Priority** | P0 |
-| **Preconditions** | Logged in as alice |
-
-**Steps**
-1. Open tasks page (or call `POST /api/tasks`).
-2. Provide title, optional description, status.
-3. Submit.
 
 **Expected**
-- Task appears in the owner's list.
-- Status and description match input.
-- Other users cannot see the task.
+- User sees only own tasks (paginated envelope: `items`, `total`, `page`, `page_size`).
+- Admin sees all tasks.
 
 **Automation**
-- UI: `tests/ui/test_tasks.py::test_create_task_happy_path`
-- API: `tests/api/test_tasks.py::test_create_task`
+- `test_list_tasks_returns_owned_only`, `test_admin_lists_all_tasks`, authz matrix
 
 ---
 
-## TC-TASK-002 — Create task without title (negative)
+## TC-TASK-002 — Create / update / delete task
 
 | Field | Value |
 | --- | --- |
 | **ID** | TC-TASK-002 |
-| **Title** | Empty title is rejected |
-| **Type** | Functional / Negative / Validation |
-| **Priority** | P1 |
-
-**Steps**
-1. Submit create-task form with blank/whitespace title.
-2. Or call API with empty title.
+| **Priority** | P0 |
 
 **Expected**
-- Request is rejected (UI shows `Title is required`; API returns 422).
-- Task list is unchanged.
+- Create with title, description, status, priority, optional due_date.
+- Title is stripped; whitespace-only title rejected.
+- Owner (or admin) can update/delete; peer cannot (403).
 
 **Automation**
-- UI: `tests/ui/test_tasks.py::test_create_task_empty_title_negative`
-- API: `tests/api/test_tasks.py::test_create_task_empty_title`
+- CRUD + `test_task_authz_matrix` + UI happy paths with cookie auth
 
 ---
 
-## TC-TASK-003 — Update task status
+## TC-TASK-003 — Pagination and status filter
 
 | Field | Value |
 | --- | --- |
 | **ID** | TC-TASK-003 |
-| **Title** | Owner can update task status |
-| **Type** | Functional |
-| **Priority** | P1 |
-| **Preconditions** | Seeded task `task-1` exists for alice |
-
-**Steps**
-1. Log in as alice.
-2. Change status of "Write test plan" to `done`.
-3. Confirm list reflects new status.
-
-**Expected**
-- Status badge updates to `done`.
-- Success confirmation is shown (UI).
-
-**Automation**
-- UI: `tests/ui/test_tasks.py::test_update_task_status`
-- API: `tests/api/test_tasks.py::test_update_task`
-
----
-
-## TC-TASK-004 — Delete task
-
-| Field | Value |
-| --- | --- |
-| **ID** | TC-TASK-004 |
-| **Title** | Owner can delete a task |
-| **Type** | Functional |
 | **Priority** | P1 |
 
 **Steps**
-1. Create a temporary task.
-2. Delete it via UI or `DELETE /api/tasks/{id}`.
-3. Attempt to fetch the same id.
+1. Authenticate as alice.
+2. Create several tasks.
+3. `GET /api/tasks?page=1&page_size=3`.
+4. `GET /api/tasks?status=todo`.
 
 **Expected**
-- Task disappears from the list.
-- API returns 404 for subsequent GET.
+- Pages are disjoint; totals correct.
+- Status filter returns only matching items.
+- Invalid status / page bounds → 422.
 
 **Automation**
-- UI: `tests/ui/test_tasks.py::test_delete_task`
-- API: `tests/api/test_tasks.py::test_delete_task`
+- `test_list_tasks_pagination`, `test_list_tasks_status_filter`, bounds parametrization
 
 ---
 
-## TC-TASK-005 — Ownership isolation
+## TC-SEC-001 — Test reset not available outside test env
 
 | Field | Value |
 | --- | --- |
-| **ID** | TC-TASK-005 |
-| **Title** | Users cannot access another user's tasks |
-| **Type** | Security / Functional |
+| **ID** | TC-SEC-001 |
 | **Priority** | P0 |
 
-**Steps**
-1. Log in as alice.
-2. Attempt to GET/PUT/DELETE bob's `task-3`.
-
 **Expected**
-- API returns HTTP 403 Forbidden.
-- UI list for alice never includes bob's tasks.
+- When `APP_ENV=test`, `POST /api/test/reset` → 200.
+- When `APP_ENV=production`, same path → 404.
+- Endpoint absent from OpenAPI paths.
 
 **Automation**
-- API: `test_get_other_users_task_forbidden`, `test_update_other_users_task_forbidden`, `test_delete_other_users_task_forbidden`
-- UI: `tests/ui/test_tasks.py::test_seeded_tasks_visible_after_login`
+- `tests/api/test_reset_gate.py`, contract path list
 
 ---
 
-## TC-TASK-006 — Full CRUD lifecycle
+## TC-CONTRACT-001 — OpenAPI document and response shapes
 
 | Field | Value |
 | --- | --- |
-| **ID** | TC-TASK-006 |
-| **Title** | Create → Read → Update → Delete lifecycle |
-| **Type** | Regression |
-| **Priority** | P0 |
-
-**Steps**
-1. Create a task via API.
-2. Read it by id.
-3. Update description/status.
-4. Delete it.
-5. Confirm 404 on subsequent GET.
+| **ID** | TC-CONTRACT-001 |
+| **Priority** | P1 |
 
 **Expected**
-- Each step succeeds with correct status codes and payload.
+- `/openapi.json` validates with openapi-spec-validator.
+- Login/me/task list/create responses match component schemas.
 
 **Automation**
-- API: `tests/api/test_tasks.py::test_full_crud_lifecycle`
+- `tests/contract/test_openapi.py`

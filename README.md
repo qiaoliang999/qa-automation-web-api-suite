@@ -1,24 +1,23 @@
 # QA Automation Web + API Suite
 
-**Portfolio project for QA Automation / Software Test Engineer roles**
+**Portfolio project — SDET / QA Automation**
 
-Repository: self-contained **system under test** (TaskTrack) + professional **automated test suite** (API + UI), with fixtures, page objects, markers, sample test cases, defect reports, and CI.
+Self-contained **TaskTrack** application (system under test) plus a layered **pytest** suite: contract, in-process API, and Playwright UI. Designed to show product-shaped automation engineering rather than a tutorial todo list.
+
+Repository: https://github.com/qiaoliang999/qa-automation-web-api-suite
 
 ---
 
-## Why this project exists
+## What this demonstrates
 
-This repository demonstrates practical QA automation skills that map directly to day-to-day work on product teams:
-
-- Designing and testing against a real HTTP API and HTML UI
-- Structuring a maintainable pytest suite (fixtures, markers, isolation)
-- Page Object Model for UI automation with Playwright
-- API client abstraction for httpx-based contract and regression tests
-- Failure evidence (screenshots on UI failures)
-- Readable manual test cases and defect reports
-- CI-ready GitHub Actions pipeline
-
-It is intentionally small and runnable — quality over feature sprawl.
+- Testing pyramid: **contract → API → UI**
+- In-process FastAPI tests (TestClient), not a subprocess for every API case
+- Role-based authorization matrix (user vs admin) with parametrization
+- OpenAPI contract checks (`openapi-spec-validator` + response schema validation)
+- Factories, multi-user `ApiClient`, page objects, markers
+- Cookie-injected UI sessions (API-seeded auth) + targeted real login tests
+- Screenshot + Playwright trace on UI failure
+- CI split into lint / API+contract / UI / smoke gates with JUnit + HTML artifacts
 
 ---
 
@@ -26,11 +25,12 @@ It is intentionally small and runnable — quality over feature sprawl.
 
 | Layer | Choice |
 | --- | --- |
-| SUT (app) | Python 3.12, FastAPI, Jinja2 templates, in-memory store |
-| API tests | pytest + httpx |
-| UI tests | pytest + Playwright (Chromium) |
-| Reporting | pytest-html, screenshot artifacts on UI failure |
-| CI | GitHub Actions (install deps, Playwright browsers, run suite) |
+| SUT | Python 3.12, FastAPI, Jinja2, SQLite, PBKDF2 password hashing |
+| API / contract | pytest + FastAPI TestClient + jsonschema + openapi-spec-validator |
+| UI | Playwright (Chromium) + Page Object Model |
+| Reporting | pytest-html, JUnit XML, screenshots, traces |
+| CI | GitHub Actions (parallel-ish jobs; smoke as PR-style gate) |
+| Lint | Ruff |
 
 ---
 
@@ -38,55 +38,67 @@ It is intentionally small and runnable — quality over feature sprawl.
 
 ```
 qa-automation-web-api-suite/
-├── app/                      # TaskTrack demo application (system under test)
-│   ├── main.py               # FastAPI routes: auth, tasks CRUD, HTML UI
-│   ├── models.py             # Pydantic models
-│   ├── database.py           # In-memory store + seed data
-│   ├── templates/            # Login + tasks pages
-│   └── static/               # Minimal CSS
+├── app/                         # TaskTrack SUT
+│   ├── main.py                  # API + HTML routes
+│   ├── models.py                # Pydantic models (roles, priority, due_date, pagination)
+│   ├── database.py              # SQLite store + seed/reset
+│   ├── auth.py                  # PBKDF2 + opaque tokens
+│   ├── templates/               # Login + tasks UI
+│   └── static/
 ├── tests/
-│   ├── conftest.py           # Server lifecycle, fixtures, screenshot hook
-│   ├── helpers/              # Config + ApiClient
-│   ├── api/                  # Auth + task API tests
-│   └── ui/                   # Playwright tests + page objects
-├── test-cases/               # Manual functional test cases (Markdown)
-├── reports/                  # Defect template + example defect reports
-├── .github/workflows/ci.yml  # CI pipeline
+│   ├── contract/                # OpenAPI / schema
+│   ├── api/                     # In-process API (auth, tasks, authz, reset gate)
+│   ├── ui/                      # Playwright + page objects
+│   ├── support/                 # ApiClient, factories, config, BasePage
+│   └── conftest.py              # Isolation, clients, browser, evidence hooks
+├── docs/TEST_STRATEGY.md
+├── test-cases/
+├── reports/                     # Realistic defect / residual-risk notes
+├── .github/workflows/ci.yml
+├── pyproject.toml
 ├── pytest.ini
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
 
-**Test isolation:** every test receives a reset data store via `POST /api/test/reset` (fixture-driven). Seeded users/tasks are reloaded so order does not matter.
+**Isolation**
 
-**UI automation:** page objects under `tests/ui/pages/` encapsulate selectors (`data-testid`) and actions. A pytest hook captures a full-page screenshot under `artifacts/screenshots/` when a UI test fails.
+- API/contract: per-test SQLite file via `TASKTRACK_DB` / `db.reconfigure`.
+- UI: one live Uvicorn process (`APP_ENV=test`) + per-test `POST /api/test/reset`.
+- Reset endpoint returns **404** unless `APP_ENV=test`.
 
 ---
 
-## Product under test: TaskTrack
-
-A tiny personal task manager.
+## Product under test: TaskTrack v2
 
 ### Seeded accounts
 
-| Username | Password | Display name |
+| Username | Password | Role |
 | --- | --- | --- |
-| `alice` | `alice123` | Alice Anderson |
-| `bob` | `bob1234` | Bob Baker |
+| `alice` | `alice123` | user |
+| `bob` | `bob1234` | user |
+| `admin` | `admin123` | admin |
+
+### Domain highlights
+
+- Tasks: title, description, status, **priority**, optional **due_date**, owner_id
+- List: **pagination** (`page`, `page_size`) + **status** filter; response envelope
+- **Admin** lists/reads all tasks; users see own only (authz matrix covered)
+- Titles stripped; max lengths enforced; passwords hashed (PBKDF2)
 
 ### API surface (summary)
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
-| GET | `/health` | No | Liveness |
+| GET | `/health` | No | Liveness + env/version |
 | POST | `/api/auth/register` | No | Create user + token |
-| POST | `/api/auth/login` | No | Username/password → token |
-| GET | `/api/auth/me` | Bearer | Current user |
-| GET/POST | `/api/tasks` | Bearer | List / create owned tasks |
-| GET/PUT/DELETE | `/api/tasks/{id}` | Bearer | Read / update / delete (owner only) |
-| GET/POST | `/login`, `/tasks`, … | Cookie | HTML UI flows |
+| POST | `/api/auth/login` | No | Token + role |
+| GET | `/api/auth/me` | Bearer | Identity + role |
+| GET | `/api/tasks` | Bearer | Paginated list (scoped) |
+| POST | `/api/tasks` | Bearer | Create |
+| GET/PUT/DELETE | `/api/tasks/{id}` | Bearer | Owner or admin |
+| POST | `/api/test/reset` | No | **Only when `APP_ENV=test`** |
 
-Interactive docs when the app is running: `http://127.0.0.1:8000/docs`
+Docs when running: `http://127.0.0.1:8000/docs`
 
 ---
 
@@ -94,139 +106,107 @@ Interactive docs when the app is running: `http://127.0.0.1:8000/docs`
 
 - Python **3.12+**
 - pip
-- Network access once to install Playwright browser binaries
-
-No Docker required.
+- Network once for Playwright Chromium
 
 ---
 
 ## Quick start
 
 ```bash
-# 1. Clone
 git clone https://github.com/qiaoliang999/qa-automation-web-api-suite.git
 cd qa-automation-web-api-suite
 
-# 2. (Recommended) virtual environment
 python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
 
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-# source .venv/bin/activate
-
-# 3. Install Python packages
 pip install -r requirements.txt
-
-# 4. Install Chromium for Playwright
 python -m playwright install chromium
 ```
 
-### Run the application only
+### Run the app
 
 ```bash
+# normal local use (reset endpoint disabled)
 uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# test mode (enables /api/test/reset) — used by UI automation
+# APP_ENV=test uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000/login and sign in with `alice` / `alice123`.
+### Run the suite
 
-### Run the automated suite
-
-The session-scoped fixture starts Uvicorn automatically if nothing is already listening on port 8000.
+API tests set `APP_ENV=test` via conftest; no manual server needed for API/contract.
 
 ```bash
 # Full suite
 pytest
 
-# Smoke only (fast PR-style gate)
+# By layer
+pytest -m "api or contract"
+pytest -m ui
 pytest -m smoke
 
-# API only
-pytest -m api
-
-# UI only
-pytest -m ui
-
-# HTML report
-pytest --html=artifacts/report.html --self-contained-html
+# Reports
+mkdir -p artifacts
+pytest -m "api or contract" \
+  --junitxml=artifacts/junit-api.xml \
+  --html=artifacts/report-api.html --self-contained-html
 ```
 
-On UI failure, screenshots are written to `artifacts/screenshots/`.
+UI failures: screenshots under `artifacts/screenshots/`, traces under `artifacts/traces/`.
 
 ---
 
-## What the suite covers
+## Suite map
 
-### API (`@pytest.mark.api`)
+| Marker | Focus |
+| --- | --- |
+| `contract` | OpenAPI validity + response schema checks |
+| `api` | Auth, CRUD, validation matrices, pagination, reset gate |
+| `authz` | Role/ownership matrix (parametrized) |
+| `ui` | Login, CRUD in browser, admin list, hybrid API-seed |
+| `smoke` | PR-sized gate |
+| `regression` | Lifecycle happy path |
 
-- Health check
-- Login success / invalid credentials / unknown user
-- Register + duplicate username + validation errors
-- `/me` with and without token
-- Task list ownership isolation
-- Create / read / update / delete
-- Empty title and invalid status validation
-- Unauthorized and forbidden (cross-user) access
-- Full CRUD lifecycle regression
-
-### UI (`@pytest.mark.ui`)
-
-- Login success and failure messaging
-- Logout
-- Tasks page requires authentication
-- Create task happy path
-- Create task empty-title negative path
-- Update status and delete task
-- Seeded data visibility / isolation in the browser
-
-Markers are defined in `pytest.ini` (`api`, `ui`, `smoke`).
-
----
-
-## Documentation included
-
-- [`test-cases/functional-test-cases.md`](test-cases/functional-test-cases.md) — sample manual cases mapped to automation
-- [`reports/defect-report-template.md`](reports/defect-report-template.md) — reusable defect template
-- [`reports/DEF-001-whitespace-title-validation.md`](reports/DEF-001-whitespace-title-validation.md) — example minor UX/validation defect
-- [`reports/DEF-002-demo-token-security.md`](reports/DEF-002-demo-token-security.md) — documented intentional security limitation of the demo app
+See [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) for layer rationale.
 
 ---
 
 ## CI
 
-GitHub Actions workflow (`.github/workflows/ci.yml`):
+Jobs in `.github/workflows/ci.yml`:
 
-1. Checkout + set up Python 3.12
-2. Install requirements
-3. Install Playwright Chromium (+ OS deps)
-4. Run smoke tests, then full suite
-5. Upload `artifacts/` (HTML report / screenshots) on completion
+1. **lint** — `ruff check app tests`
+2. **api-contract** — `pytest -m "api or contract"` + JUnit/HTML
+3. **ui** — Playwright Chromium + UI markers (depends on api-contract)
+4. **smoke** — `pytest -m smoke` as a compact gate
+
+Artifacts uploaded per job (`artifacts/`).
 
 ---
 
-## Design choices (and limitations)
+## Documentation
 
-| Choice | Rationale / limitation |
+- [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) — pyramid, isolation, auth bootstrap
+- [`test-cases/functional-test-cases.md`](test-cases/functional-test-cases.md)
+- [`reports/DEF-001-whitespace-title-validation.md`](reports/DEF-001-whitespace-title-validation.md) — fixed validation regression
+- [`reports/DEF-002-demo-token-security.md`](reports/DEF-002-demo-token-security.md) — residual auth design risk
+
+---
+
+## Design choices and residual limitations
+
+| Choice | Trade-off |
 | --- | --- |
-| In-memory DB | Fast, no external services; data lost on process restart |
-| Plain-text demo passwords | Deterministic tests; **not** production auth |
-| `/api/test/reset` | Test isolation helper; must not ship on real systems |
-| Single-process server | Sufficient for local + CI; not load-test oriented |
-| Chromium only in CI | Keeps pipeline lean; Firefox/WebKit easy to add |
+| SQLite | Simple, file-based isolation; not multi-host concurrent SUT |
+| PBKDF2 (stdlib) | No bcrypt binary dependency; iterations lowered in tests |
+| Opaque session tokens | Not JWTs; no token expiry policy beyond process/store |
+| TestClient for API | Fast/reliable; slightly different stack path than pure network clients |
+| Chromium-only CI | Lean pipeline; Firefox/WebKit not run by default |
+| Single UI server process | Fine for this suite; not a load test |
 
-These limitations are deliberate so the focus stays on **automation engineering quality**.
-
----
-
-## Skills demonstrated for QA Automation roles
-
-- Building stable selectors (`data-testid`) and Page Objects
-- Fixture-based setup/teardown and test data reset
-- API-first coverage plus UI smoke/regression
-- Negative testing and authorization checks
-- Markers for smoke vs full regression
-- CI integration and artifact collection
-- Clear communication via test cases and defect reports
+These are intentional so the focus stays on **automation quality** with a credible multi-role SUT.
 
 ---
 

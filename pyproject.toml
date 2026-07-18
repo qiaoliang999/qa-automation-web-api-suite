@@ -1,0 +1,28 @@
+[project]
+name = "qa-automation-web-api-suite"
+version = "2.0.0"
+description = "TaskTrack SUT + pytest/Playwright QA automation portfolio suite"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--tb=short"]
+markers = [
+    "api: In-process API tests (FastAPI + httpx ASGI transport)",
+    "ui: UI tests using Playwright against a live server",
+    "contract: OpenAPI / response schema contract tests",
+    "smoke: High-value smoke coverage suitable for PR gates",
+    "regression: Broader regression scenarios",
+    "authz: Authorization / role matrix coverage",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

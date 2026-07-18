@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Locator, expect
 
-from tests.helpers.config import BASE_URL
+from tests.support.base_page import BasePage
 
 
-class TasksPage:
-    def __init__(self, page: Page, base_url: str = BASE_URL) -> None:
-        self.page = page
-        self.base_url = base_url.rstrip("/")
+class TasksPage(BasePage):
+    path = "/tasks"
 
     def open(self) -> None:
-        self.page.goto(f"{self.base_url}/tasks")
+        self.goto()
 
     @property
     def heading(self) -> Locator:
@@ -42,6 +40,14 @@ class TasksPage:
     @property
     def status_select(self) -> Locator:
         return self.page.get_by_test_id("task-status-select")
+
+    @property
+    def priority_select(self) -> Locator:
+        return self.page.get_by_test_id("task-priority-select")
+
+    @property
+    def due_date_input(self) -> Locator:
+        return self.page.get_by_test_id("task-due-date-input")
 
     @property
     def create_submit(self) -> Locator:
@@ -76,10 +82,15 @@ class TasksPage:
         title: str,
         description: str = "",
         status: str = "todo",
+        priority: str = "medium",
+        due_date: str = "",
     ) -> None:
         self.title_input.fill(title)
         self.description_input.fill(description)
         self.status_select.select_option(status)
+        self.priority_select.select_option(priority)
+        if due_date:
+            self.due_date_input.fill(due_date)
         self.create_submit.click()
 
     def task_by_title(self, title: str) -> Locator:
