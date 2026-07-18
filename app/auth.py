@@ -8,7 +8,6 @@ import os
 import secrets
 from datetime import datetime, timezone
 
-
 # pbkdf2_sha256 — stdlib only, no native bcrypt dependency in CI.
 # 120k is fine for production-like demos; tests may lower via TASKTRACK_PBKDF2_ITERATIONS.
 _HASH_ALGO = "sha256"
