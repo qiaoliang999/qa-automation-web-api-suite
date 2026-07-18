@@ -4,7 +4,32 @@
 
 Self-contained **TaskTrack** application (system under test) plus a layered **pytest** suite: contract, in-process API, and Playwright UI. Designed to show product-shaped automation engineering rather than a tutorial todo list.
 
+[![CI](https://github.com/qiaoliang999/qa-automation-web-api-suite/actions/workflows/ci.yml/badge.svg)](https://github.com/qiaoliang999/qa-automation-web-api-suite/actions/workflows/ci.yml)
+
 Repository: https://github.com/qiaoliang999/qa-automation-web-api-suite
+
+---
+
+## For hiring managers / reviewers (60 seconds)
+
+**Role signal:** SDET / Automation QA (Web + API)
+
+**What you can verify in this repo:**
+
+- Testing pyramid with clear layer ownership: **contract → API → UI**
+- In-process FastAPI tests (TestClient) plus Playwright page objects for browser coverage
+- Parametrized role-based authorization matrix (user vs admin, ownership boundaries)
+- OpenAPI contract validation and response schema checks
+- CI split into lint / API+contract / UI / smoke gates with JUnit + HTML artifacts
+- Defect write-ups (fixed regression + residual design risk) alongside the suite
+
+**Start here (3 links):**
+
+1. Test strategy → [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md)
+2. CI workflow → [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+3. Sample defect report → [`reports/DEF-001-whitespace-title-validation.md`](reports/DEF-001-whitespace-title-validation.md)
+
+API layer tests: [`tests/api/`](tests/api/) · UI page objects: [`tests/ui/pages/`](tests/ui/pages/)
 
 ---
 
@@ -175,7 +200,7 @@ See [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) for layer rationale.
 
 ## CI
 
-Jobs in `.github/workflows/ci.yml`:
+Jobs in [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
 
 1. **lint** — `ruff check app tests`
 2. **api-contract** — `pytest -m "api or contract"` + JUnit/HTML
