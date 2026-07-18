@@ -6,10 +6,12 @@ import pytest
 
 from tests.support.api_client import ApiClient
 from tests.support.config import ALL_SEED_TASK_IDS
-
+from tests.support.factories import task_payload
 
 # (actor, task_id, method, expected_status)
 # task-1: alice, task-3: bob, task-4: admin
+# Destructive success deletes are covered separately with freshly created tasks
+# so the matrix stays non-destructive against seed fixtures.
 AUTHZ_CASES = [
     # get
     ("alice", "task-1", "get", 200),
@@ -27,11 +29,9 @@ AUTHZ_CASES = [
     ("bob", "task-3", "update", 200),
     ("admin", "task-1", "update", 200),
     ("admin", "task-3", "update", 200),
-    # delete (use non-destructive checks by expecting 204/403/404 pattern on clone)
+    # delete denials (success deletes use dedicated cases below)
     ("alice", "task-3", "delete", 403),
     ("bob", "task-1", "delete", 403),
-    ("alice", "task-1", "delete", 204),
-    ("admin", "task-3", "delete", 204),
 ]
 
 
@@ -59,6 +59,33 @@ def test_task_authz_matrix(
     else:  # pragma: no cover
         raise AssertionError(method)
     assert response.status_code == expected
+    if expected == 403:
+        assert response.json()["detail"] == "Forbidden"
+
+
+@pytest.mark.api
+@pytest.mark.authz
+def test_owner_can_delete_own_task(alice_client: ApiClient):
+    created = alice_client.create_task(**task_payload(title="owner-delete-target"))
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+
+    deleted = alice_client.delete_task(task_id)
+    assert deleted.status_code == 204
+    assert alice_client.get_task(task_id).status_code == 404
+
+
+@pytest.mark.api
+@pytest.mark.authz
+def test_admin_can_delete_peer_task(api_client: ApiClient, admin_client: ApiClient):
+    owner = api_client.as_user("bob")
+    created = owner.create_task(**task_payload(title="admin-delete-target"))
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+
+    deleted = admin_client.delete_task(task_id)
+    assert deleted.status_code == 204
+    assert admin_client.get_task(task_id).status_code == 404
 
 
 @pytest.mark.api
@@ -86,16 +113,10 @@ def test_user_cannot_list_others_tasks(alice_client: ApiClient, bob_client: ApiC
 @pytest.mark.api
 @pytest.mark.authz
 @pytest.mark.parametrize(
-    "actor,endpoint",
-    [
-        (None, "list"),
-        (None, "create"),
-        (None, "get"),
-        (None, "update"),
-        (None, "delete"),
-    ],
+    "endpoint",
+    ["list", "create", "get", "update", "delete"],
 )
-def test_unauthenticated_matrix(api_client: ApiClient, actor, endpoint: str):
+def test_unauthenticated_matrix(api_client: ApiClient, endpoint: str):
     if endpoint == "list":
         response = api_client.list_tasks(auth=False)
     elif endpoint == "create":
@@ -107,6 +128,7 @@ def test_unauthenticated_matrix(api_client: ApiClient, actor, endpoint: str):
     else:
         response = api_client.delete_task("task-1", auth=False)
     assert response.status_code == 401
+    assert response.json()["detail"]
 
 
 @pytest.mark.api

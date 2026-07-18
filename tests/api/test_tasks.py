@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tests.support.api_client import ApiClient
-from tests.support.config import ADMIN_TASK_IDS, ALICE_TASK_IDS, ALL_SEED_TASK_IDS, BOB_TASK_IDS
+from tests.support.config import ALICE_TASK_IDS, BOB_TASK_IDS
 from tests.support.factories import task_payload
 
 

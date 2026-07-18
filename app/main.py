@@ -231,12 +231,9 @@ def update_task(
     task = db.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    # Only the owner may mutate; admin may read all but not hijack ownership edits.
+    # Owner or admin may mutate; peers are forbidden.
     if task.owner_id != current_user.id and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
-    if task.owner_id != current_user.id and current_user.role == "admin":
-        # Admin may update any task (ops use case).
-        pass
 
     data = payload.model_dump(exclude_unset=True)
     if "title" in data:
