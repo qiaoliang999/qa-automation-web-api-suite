@@ -6,7 +6,7 @@ import pytest
 
 from tests.support.api_client import ApiClient
 from tests.support.config import ALICE_TASK_IDS, BOB_TASK_IDS
-from tests.support.factories import task_payload
+from tests.support.factories import task_payload, task_update_payload
 
 
 @pytest.mark.api
@@ -172,25 +172,77 @@ def test_bob_sees_only_own_tasks(bob_client: ApiClient):
 @pytest.mark.api
 @pytest.mark.regression
 def test_full_crud_lifecycle(alice_client: ApiClient):
-    created = alice_client.create_task(**task_payload(title="Lifecycle task", status="todo"))
-    assert created.status_code == 201
+    created = alice_client.expect_status(
+        alice_client.create_task(**task_payload(title="Lifecycle task", status="todo")),
+        201,
+        context="create lifecycle task",
+    )
     task_id = created.json()["id"]
 
-    read = alice_client.get_task(task_id)
-    assert read.status_code == 200
+    read = alice_client.expect_status(
+        alice_client.get_task(task_id),
+        200,
+        context="read lifecycle task",
+    )
     assert read.json()["title"] == "Lifecycle task"
 
-    updated = alice_client.update_task(
-        task_id,
-        {"description": "updated", "status": "in_progress", "priority": "high"},
+    updated = alice_client.expect_status(
+        alice_client.update_task(
+            task_id,
+            task_update_payload(description="updated", status="in_progress", priority="high"),
+        ),
+        200,
+        context="update lifecycle task",
     )
-    assert updated.status_code == 200
     assert updated.json()["status"] == "in_progress"
     assert updated.json()["priority"] == "high"
 
-    deleted = alice_client.delete_task(task_id)
-    assert deleted.status_code == 204
+    alice_client.expect_status(
+        alice_client.delete_task(task_id),
+        204,
+        context="delete lifecycle task",
+    )
     assert alice_client.get_task(task_id).status_code == 404
+
+
+@pytest.mark.api
+@pytest.mark.regression
+def test_partial_update_preserves_unset_fields(alice_client: ApiClient):
+    """Regression: PATCH-like partial PUT must not wipe fields left unset."""
+    created = alice_client.expect_status(
+        alice_client.create_task(
+            **task_payload(
+                title="Partial preserve",
+                description="keep me",
+                status="todo",
+                priority="high",
+                due_date="2026-09-01",
+            )
+        ),
+        201,
+        context="seed partial-update task",
+    )
+    task_id = created.json()["id"]
+
+    updated = alice_client.expect_status(
+        alice_client.update_task(task_id, task_update_payload(status="in_progress")),
+        200,
+        context="status-only update",
+    )
+    body = updated.json()
+    assert body["status"] == "in_progress"
+    assert body["title"] == "Partial preserve"
+    assert body["description"] == "keep me"
+    assert body["priority"] == "high"
+    assert body["due_date"] == "2026-09-01"
+
+    cleared = alice_client.expect_status(
+        alice_client.update_task(task_id, task_update_payload(due_date=None)),
+        200,
+        context="clear due_date",
+    )
+    assert cleared.json()["due_date"] is None
+    assert cleared.json()["status"] == "in_progress"
 
 
 @pytest.mark.api

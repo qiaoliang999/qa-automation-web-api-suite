@@ -20,7 +20,7 @@ os.environ.setdefault("TASKTRACK_PBKDF2_ITERATIONS", "5000")
 
 from app.database import db  # noqa: E402
 from app.main import COOKIE_NAME, app  # noqa: E402
-from tests.support.api_client import ApiClient  # noqa: E402
+from tests.support.api_client import ApiClient, format_response  # noqa: E402
 from tests.support.config import BASE_URL  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +51,6 @@ def api_client(isolated_db) -> ApiClient:
     with TestClient(app) as test_client:
         client = ApiClient.from_test_client(test_client)
         yield client
-
 
 
 @pytest.fixture()
@@ -151,7 +150,7 @@ def live_api(app_server: str) -> ApiClient:
     """Network ApiClient against the live UI server; resets data per test."""
     client = ApiClient.from_base_url(app_server)
     reset = client.reset_data()
-    assert reset.status_code == 200, reset.text
+    assert reset.status_code == 200, format_response(reset)
     yield client
     client.close()
 
@@ -200,7 +199,7 @@ def page(context: BrowserContext, live_api: ApiClient) -> Page:
 def authenticated_page(context: BrowserContext, live_api: ApiClient, base_url: str) -> Page:
     """Browser page pre-authenticated as alice via API-issued session cookie."""
     login = live_api.login_as("alice")
-    assert login.status_code == 200, login.text
+    assert login.status_code == 200, format_response(login)
     token = login.json()["access_token"]
 
     context.add_cookies(
@@ -223,7 +222,7 @@ def authenticated_page(context: BrowserContext, live_api: ApiClient, base_url: s
 def admin_page(context: BrowserContext, live_api: ApiClient, base_url: str) -> Page:
     """Browser page pre-authenticated as admin via cookie injection."""
     login = live_api.login_as("admin")
-    assert login.status_code == 200, login.text
+    assert login.status_code == 200, format_response(login)
     token = login.json()["access_token"]
     context.add_cookies(
         [
