@@ -119,3 +119,37 @@ def test_admin_status_filter_across_owners(admin_client: ApiClient):
     # seed: task-1 (alice todo), task-4 (admin todo)
     assert ids == {"task-1", "task-4"}
     assert all(t["status"] == "todo" for t in body["items"])
+
+
+@pytest.mark.api
+@pytest.mark.authz
+def test_user_cannot_read_admin_owned_task(alice_client: ApiClient):
+    """Peer users must not escalate into admin-owned seed work."""
+    response = alice_client.get_task("task-4")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Forbidden"
+
+
+@pytest.mark.api
+@pytest.mark.authz
+def test_owner_survives_peer_delete_attempt(
+    alice_client: ApiClient,
+    bob_client: ApiClient,
+):
+    """Failed peer deletes must leave the resource intact for the owner."""
+    denied = bob_client.delete_task("task-1")
+    assert denied.status_code == 403
+    assert denied.json()["detail"] == "Forbidden"
+
+    still_there = alice_client.get_task("task-1")
+    assert still_there.status_code == 200
+    assert still_there.json()["id"] == "task-1"
+
+
+@pytest.mark.api
+@pytest.mark.authz
+def test_invalid_token_is_rejected(api_client: ApiClient):
+    forged = api_client.authorized("not-a-real-token")
+    response = forged.list_tasks()
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired token"

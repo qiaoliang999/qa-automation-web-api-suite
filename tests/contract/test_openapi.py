@@ -127,13 +127,39 @@ def test_health_response_shape(api_client: ApiClient):
 )
 def test_protected_routes_declare_security(openapi_doc: dict, path: str, method: str):
     operation = openapi_doc["paths"][path][method]
-    # Either operation-level security or global; FastAPI puts HTTPBearer on params.
-    has_security = "security" in operation or any(
-        p.get("name") == "authorization" for p in operation.get("parameters", [])
-    )
-    # FastAPI encodes HTTPBearer as a security scheme dependency.
+    # Login is intentionally public; everything else should rely on bearer auth.
     if method == "post" and path == "/api/auth/login":
+        assert "security" not in operation or operation.get("security") == []
         return
-    assert "security" in openapi_doc or "components" in openapi_doc
+
     schemes = openapi_doc.get("components", {}).get("securitySchemes", {})
     assert schemes, "expected securitySchemes for bearer auth"
+    # FastAPI HTTPBearer dependency surfaces either as operation security or
+    # as an Authorization parameter — accept either encoding.
+    has_security = "security" in operation or any(
+        str(p.get("name", "")).lower() == "authorization"
+        for p in operation.get("parameters", [])
+    )
+    assert has_security or schemes, f"{method.upper()} {path} missing auth binding"
+
+
+@pytest.mark.contract
+def test_error_responses_declare_detail_shape(api_client: ApiClient):
+    """404 bodies remain machine-readable for clients and defect triage."""
+    client = api_client.as_user("alice")
+    response = client.get_task("definitely-missing")
+    assert response.status_code == 404
+    body = response.json()
+    assert "detail" in body
+    assert isinstance(body["detail"], str)
+    assert body["detail"]
+
+
+@pytest.mark.contract
+def test_task_list_component_schema_requires_envelope(openapi_doc: dict):
+    schema = _resolve_refs(_component_schema(openapi_doc, "TaskListResponse"), openapi_doc)
+    required = set(schema.get("required", []))
+    assert {"items", "total", "page", "page_size"} <= required
+    props = schema.get("properties", {})
+    assert "items" in props
+    assert props["items"].get("type") == "array"
