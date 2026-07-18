@@ -9,6 +9,14 @@ import httpx
 from tests.support.config import USERS
 
 
+def format_response(response: Any) -> str:
+    """Compact response summary for assertion failures."""
+    body = getattr(response, "text", "") or ""
+    if len(body) > 300:
+        body = body[:300] + "..."
+    return f"status={response.status_code} body={body!r}"
+
+
 class ApiClient:
     """Thin wrapper around an httpx-compatible client.
 
@@ -17,7 +25,8 @@ class ApiClient:
     - Network httpx.Client (UI helper against live server)
 
     Each instance holds its own Authorization token so multi-user scenarios
-    do not clobber each other.
+    do not clobber each other. Prefer ``as_user`` / ``authorized`` over
+    mutating ``token`` on a shared client.
     """
 
     def __init__(
@@ -33,10 +42,12 @@ class ApiClient:
 
     @classmethod
     def from_test_client(cls, test_client: Any) -> "ApiClient":
+        """Wrap a FastAPI/Starlette TestClient (does not own its lifecycle)."""
         return cls(test_client, owns_client=False)
 
     @classmethod
     def from_base_url(cls, base_url: str, timeout: float = 10.0) -> "ApiClient":
+        """Build a network client against a live origin (caller should close)."""
         client = httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout)
         return cls(client, owns_client=True)
 
@@ -55,7 +66,17 @@ class ApiClient:
         return ApiClient(self._client, token=None, owns_client=False)
 
     def authorized(self, token: str) -> "ApiClient":
+        """Return a sibling client that sends the given bearer token."""
         return ApiClient(self._client, token=token, owns_client=False)
+
+    def expect_status(self, response: Any, expected: int, *, context: str = "") -> Any:
+        """Assert status code with response body in the failure message."""
+        if response.status_code != expected:
+            prefix = f"{context}: " if context else ""
+            raise AssertionError(
+                f"{prefix}expected HTTP {expected}, got {format_response(response)}"
+            )
+        return response
 
     def _headers(self, auth: bool = True) -> dict[str, str]:
         headers = {"Accept": "application/json"}
@@ -110,7 +131,12 @@ class ApiClient:
         return response
 
     def login_as(self, user_key: str, *, set_token: bool = True) -> Any:
-        user = USERS[user_key]
+        """Log in as a seeded user key from ``tests.support.config.USERS``."""
+        try:
+            user = USERS[user_key]
+        except KeyError as exc:
+            known = ", ".join(sorted(USERS))
+            raise KeyError(f"Unknown seeded user {user_key!r}; expected one of: {known}") from exc
         return self.login(user["username"], user["password"], set_token=set_token)
 
     def as_user(self, user_key: str) -> "ApiClient":
@@ -119,8 +145,7 @@ class ApiClient:
         response = sibling.login_as(user_key)
         if response.status_code != 200:
             raise RuntimeError(
-                f"Failed to authenticate as {user_key}: "
-                f"{response.status_code} {response.text}"
+                f"Failed to authenticate as {user_key}: {format_response(response)}"
             )
         return sibling
 
