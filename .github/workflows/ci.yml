@@ -7,9 +7,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
-    name: Lint
+    name: Lint (ruff)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -31,11 +35,12 @@ jobs:
         run: ruff check app tests
 
   api-contract:
-    name: API + Contract
+    name: API + Contract (in-process)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       APP_ENV: test
+      # Keep hashing cheap in CI while still exercising real PBKDF2.
       TASKTRACK_PBKDF2_ITERATIONS: "5000"
     steps:
       - name: Checkout
@@ -70,7 +75,7 @@ jobs:
           if-no-files-found: ignore
 
   ui:
-    name: UI
+    name: UI (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [api-contract]
@@ -113,7 +118,7 @@ jobs:
           if-no-files-found: ignore
 
   smoke:
-    name: Smoke (PR gate)
+    name: Smoke (fast PR gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

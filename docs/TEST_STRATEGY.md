@@ -8,8 +8,8 @@ This repository is both a **system under test** (TaskTrack) and a **portfolio-gr
 
 | Layer | Location | Transport | What it proves |
 | --- | --- | --- | --- |
-| **Contract** | `tests/contract/` | In-process TestClient | OpenAPI document validity; key responses match component schemas |
-| **API** | `tests/api/` | In-process TestClient | Business rules, validation, authz matrix, pagination/filter |
+| **Contract** | `tests/contract/` | In-process TestClient | OpenAPI document validity; key responses match component schemas; protected ops declare security |
+| **API** | `tests/api/` | In-process TestClient | Business rules, validation, authz matrix, pagination/filter, reset gate |
 | **UI** | `tests/ui/` | Live Uvicorn + Playwright | Browser-critical paths; page objects; failure screenshots/traces |
 
 ### Why API is in-process
@@ -20,7 +20,7 @@ API tests use FastAPI/`starlette.testclient.TestClient` against the ASGI app wit
 - Port collisions
 - Cross-test data bleed without network reset latency
 
-The test-only reset endpoint (`POST /api/test/reset`) is still exercised and is **gated** to `APP_ENV=test` (404 otherwise).
+The test-only reset endpoint (`POST /api/test/reset`) is still exercised and is **gated** to `APP_ENV=test` (404 otherwise). Never enable that gate outside the test environment.
 
 ### Why UI still uses a live server
 
@@ -28,9 +28,10 @@ HTML form posts, cookies, and Playwright need a real HTTP origin. The UI server 
 
 ## Isolation model
 
-1. **API/contract:** `isolated_db` reconfigures SQLite to a `tmp_path` file and reseeds.
+1. **API/contract:** `isolated_db` reconfigures SQLite to a `tmp_path` file and reseeds before every test.
 2. **UI:** session-scoped live server + per-test `live_api.reset_data()`.
 3. Seeded users/tasks are deterministic (`alice`, `bob`, `admin` + four tasks).
+4. Multi-user cases use independent `ApiClient` instances (`as_user` / `authorized`) so bearer tokens never overwrite each other mid-test.
 
 ## Auth bootstrap
 
@@ -46,10 +47,34 @@ This keeps most UI cases off the slow full-login path while still validating log
 
 | Marker | Intent |
 | --- | --- |
-| `smoke` | Small PR gate (API + one UI happy path) |
-| `api` / `contract` / `ui` | Layer selection |
-| `authz` | Role/ownership matrix |
-| `regression` | Broader happy-path lifecycle |
+| `smoke` | Small PR gate (API + one UI happy path); CI job fails fast via `--maxfail=1` |
+| `api` / `contract` / `ui` | Layer selection for targeted local/CI runs |
+| `authz` | Role/ownership matrix (owner, peer, admin, unauthenticated, forged token) |
+| `regression` | Broader happy-path lifecycle (CRUD end-to-end via API) |
+
+### Local recipes
+
+```bash
+# Fast feedback while iterating on API behavior
+pytest -m "api or contract" -q
+
+# Authz slice only
+pytest -m authz -q
+
+# PR-shaped gate
+pytest -m smoke -q --maxfail=1
+```
+
+## CI layout
+
+| Job | Marker / scope | Notes |
+| --- | --- | --- |
+| **Lint (ruff)** | static | Blocks style/import issues early |
+| **API + Contract (in-process)** | `api or contract` | No Playwright; `APP_ENV=test` |
+| **UI (Playwright)** | `ui` | Depends on API+contract green; Chromium only |
+| **Smoke (fast PR gate)** | `smoke` | Parallel gate; stops on first failure |
+
+Jobs share artifact upload patterns (JUnit + HTML; UI also screenshots/traces). Concurrent runs on the same ref cancel in-progress workflows to avoid queue noise.
 
 ## What is *not* automated here
 
